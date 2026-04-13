@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeonHub | IndexedDB Cloud</title>
+    <style>
+        :root {
+            --bg: #050505;
+            --neon-pink: #ff007f;
+            --neon-orange: #ff4e00;
+            --neon-red: #ff0000;
+            --neon-cyan: #00f3ff;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Навигация */
+        nav {
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            background: #0a0a0a;
+            border-bottom: 2px solid var(--neon-pink);
+            box-shadow: 0 0 20px rgba(255, 0, 127, 0.4);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-btn {
+            background: transparent;
+            border: 2px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            padding: 10px 25px;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 5px;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .nav-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px var(--neon-cyan);
+            background: var(--neon-cyan);
+            color: #000;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 90%;
+            margin-top: 40px;
+            display: none;
+            animation: fadeIn 0.4s ease-in-out;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .active { display: block; }
+
+        /* Зона загрузки */
+        .upload-zone {
+            border: 3px dashed var(--neon-pink);
+            padding: 50px;
+            text-align: center;
+            border-radius: 15px;
+            background: rgba(255, 0, 127, 0.05);
+            margin-bottom: 20px;
+            transition: 0.3s;
+        }
+
+        .upload-zone.dragover {
+            background: rgba(255, 78, 0, 0.1);
+            border-color: var(--neon-orange);
+            transform: scale(1.02);
+            box-shadow: inset 0 0 20px rgba(255, 78, 0, 0.5);
+        }
+
+        .file-info-display {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 8px;
+            display: none;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: #111;
+            padding: 25px;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+
+        input, textarea {
+            background: #000;
+            border: 1px solid #444;
+            padding: 15px;
+            color: #fff;
+            border-radius: 5px;
+            font-family: inherit;
+        }
+
+        input:focus, textarea:focus { border-color: var(--neon-orange); outline: none; box-shadow: 0 0 10px rgba(255, 78, 0, 0.3); }
+
+        /* Библиотека */
+        .library-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .file-card {
+            background: #151515;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid var(--neon-red);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .file-card h3 { margin: 0 0 5px 0; color: var(--neon-orange); word-wrap: break-word; }
+        .file-card p { font-size: 0.9em; color: #ccc; }
+        .file-card .meta { font-size: 0.8em; color: #777; margin-bottom: 15px; }
+
+        /* Модалка */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal {
+            background: #0a0a0a;
+            padding: 40px;
+            border: 2px solid var(--neon-pink);
+            border-radius: 15px;
+            width: 350px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(255, 0, 127, 0.3);
+        }
+
+        .error-msg { color: var(--neon-red); font-size: 0.8em; margin-top: -10px; margin-bottom: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <button class="nav-btn" onclick="showTab('upload')">Drop a File</button>
+    <button class="nav-btn" onclick="showTab('library')">Library</button>
+</nav>
+
+<div id="upload" class="container active">
+    <h2 style="color: var(--neon-pink)">UPLOAD SECTOR</h2>
+    <div class="upload-zone" id="drop-zone">
+        <p style="font-size: 1.2em; margin-bottom: 10px;">Drag & Drop your application</p>
+        <p style="color: #666; font-size: 0.9em; margin-top: 0;">Max Node Capacity: 1 GB</p>
+        <button class="nav-btn" onclick="document.getElementById('fileInput').click()" style="margin-top: 15px;">Select File</button>
+        <input type="file" id="fileInput" hidden onchange="handleFileSelect(this.files)">
+        
+        <div id="fileInfo" class="file-info-display">
+            <strong style="color: var(--neon-cyan)">[Attached]:</strong> <span id="fileName"></span><br>
+            <span style="color: #888; font-size: 0.9em;">Size: <span id="fileSize"></span> MB</span>
+        </div>
+    </div>
+
+    <div class="input-group">
+        <input type="text" id="appName" placeholder="Repository Name (e.g. CyberApp v2)">
+        <textarea id="appDesc" rows="3" placeholder="Brief description of the package..."></textarea>
+        <button class="nav-btn" style="border-color: var(--neon-orange); color: var(--neon-orange)" onclick="uploadFile()">Execute Protocol: PUSH</button>
+    </div>
+</div>
+
+<div id="library" class="container">
+    <h2 style="color: var(--neon-cyan)">SECURE ARCHIVE</h2>
+    <div class="library-grid" id="library-grid">
+        <p style="color: #666;">Loading database nodes...</p>
+    </div>
+</div>
+
+<div class="overlay" id="authOverlay">
+    <div class="modal">
+        <h2 style="color: var(--neon-pink); margin-top: 0;">IDENTITY REQUIRED</h2>
+        <p style="color: #aaa; margin-bottom: 20px;">Provide valid credentials to decrypt files.</p>
+        <div class="input-group" style="padding:0; background:none; border:none;">
+            <input type="email" id="regEmail" placeholder="Proxy Email">
+            <div id="emailError" class="error-msg">Error: Invalid email syntax!</div>
+            <input type="password" id="regPass" placeholder="Decryption Key (Password)">
+            <button class="nav-btn" onclick="validateAndRegister()">Authenticate</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Инициализация базы данных IndexedDB (Наш сервер)
+    let db;
+    const request = indexedDB.open("NeonHubDatabase", 1);
+
+    request.onupgradeneeded = function(event) {
+        db = event.target.result;
+        // Создаем хранилище для файлов
+        if (!db.objectStoreNames.contains("apps")) {
+            db.createObjectStore("apps", { keyPath: "id" });
+        }
+    };
+
+    request.onsuccess = function(event) {
+        db = event.target.result;
+        console.log("Database connection established.");
+        renderLibrary(); // Отрисовываем файлы при старте
+    };
+
+    request.onerror = function(event) {
+        console.error("Database error: ", event.target.error);
+    };
+
+    let currentFile = null;
+    let pendingDownloadId = null; // Запоминаем, какой файл хотели скачать до регистрации
+
+    function showTab(id) {
+        document.querySelectorAll('.container').forEach(c => c.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        if(id === 'library') renderLibrary();
+    }
+
+    // Обработка файла
+    function handleFileSelect(files) {
+        if (files.length > 0) {
+            const file = files[0];
+            // Лимит 1 ГБ (1024 * 1024 * 1024 байт)
+            if (file.size > 1073741824) {
+                alert("CRITICAL ERROR: Payload exceeds 1GB limit!");
+                return;
+            }
+            currentFile = file;
+            document.getElementById('fileInfo').style.display = 'block';
+            document.getElementById('fileName').innerText = file.name;
+            document.getElementById('fileSize').innerText = (file.size / (1024*1024)).toFixed(2);
+        }
+    }
+
+    // Загрузка файла в Базу Данных
+    function uploadFile() {
+        const title = document.getElementById('appName').value;
+        const desc = document.getElementById('appDesc').value;
+
+        if (!currentFile) return alert("Error: No file attached to payload!");
+        if (!title) return alert("Error: Repository name is missing!");
+
+        const transaction = db.transaction(["apps"], "readwrite");
+        const store = transaction.objectStore("apps");
+
+        const appData = {
+            id: Date.now(),
+            name: title,
+            description: desc,
+            fileName: currentFile.name,
+            fileData: currentFile, // Сохраняем САМ ФАЙЛ целиком!
+            timestamp: new Date().toLocaleDateString()
+        };
+
+        const addRequest = store.add(appData);
+
+        addRequest.onsuccess = function() {
+            // Сброс интерфейса
+            currentFile = null;
+            document.getElementById('fileInfo').style.display = 'none';
+            document.getElementById('appName').value = '';
+            document.getElementById('appDesc').value = '';
+            
+            alert(`Protocol PUSH successful: ${title} saved to DB.`);
+            showTab('library');
+        };
+
+        addRequest.onerror = function() {
+            alert("Error saving file to database.");
+        };
+    }
+
+    // Отрисовка Библиотеки
+    function renderLibrary() {
+        if (!db) return;
+        const grid = document.getElementById('library-grid');
+        grid.innerHTML = ''; 
+
+        const transaction = db.transaction(["apps"], "readonly");
+        const store = transaction.objectStore("apps");
+        const request = store.getAll();
+
+        request.onsuccess = function(event) {
+            const files = event.target.result;
+            
+            if (files.length === 0) {
+                grid.innerHTML = '<p style="color: #666; grid-column: 1/-1; text-align: center;">Archive is empty. Upload data nodes.</p>';
+                return;
+            }
+
+            files.forEach(f => {
+                const card = document.createElement('div');
+                card.className = 'file-card';
+                card.innerHTML = `
+                    <div>
+                        <h3>${f.name}</h3>
+                        <div class="meta">📁 ${f.fileName} | 🕒 ${f.timestamp}</div>
+                        <p>${f.description}</p>
+                    </div>
+                    <button class="nav-btn" style="width:100%; border-color: var(--neon-red); color: var(--neon-red); margin-top: 15px;" 
+                            onclick="tryDownload(${f.id})">⬇ Download</button>
+                `;
+                grid.appendChild(card);
+            });
+        };
+    }
+
+    // Логика скачивания и проверки регистрации
+    function tryDownload(fileId) {
+        if (localStorage.getItem('isRegistered') === 'true') {
+            executeDownload(fileId);
+        } else {
+            pendingDownloadId = fileId; // Запоминаем, что хотели скачать
+            document.getElementById('authOverlay').style.display = 'flex';
+        }
+    }
+
+    // Выполнение скачивания реального файла из Базы Данных
+    function executeDownload(fileId) {
+        const transaction = db.transaction(["apps"], "readonly");
+        const store = transaction.objectStore("apps");
+        const request = store.get(fileId);
+
+        request.onsuccess = function(event) {
+            const appData = event.target.result;
+            if (appData && appData.fileData) {
+                // Создаем виртуальную ссылку на сохраненный файл
+                const fileBlob = appData.fileData;
+                const url = URL.createObjectURL(fileBlob);
+                
+                // Невидимый клик для старта загрузки браузером
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = appData.fileName; // Оригинальное имя файла
+                document.body.appendChild(a);
+                a.click();
+                
+                // Убираем за собой мусор
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+            } else {
+                alert("File data corrupted or missing.");
+            }
+        };
+    }
+
+    // Регистрация
+    function validateAndRegister() {
+        const email = document.getElementById('regEmail').value;
+        const pass = document.getElementById('regPass').value;
+        const emailError = document.getElementById('emailError');
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailPattern.test(email)) {
+            emailError.style.display = 'block';
+            return;
+        }
+
+        if (pass.length < 4) return alert("Key must be at least 4 characters!");
+
+        localStorage.setItem('isRegistered', 'true');
+        document.getElementById('authOverlay').style.display = 'none';
+        
+        // Если была попытка скачать файл до регистрации - качаем его сейчас
+        if (pendingDownloadId) {
+            executeDownload(pendingDownloadId);
+            pendingDownloadId = null;
+        } else {
+            alert("Authentication complete.");
+        }
+    }
+
+    // Красивый Drag and Drop
+    const dz = document.getElementById('drop-zone');
+    dz.addEventListener('dragenter', (e) => { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragover', (e) => { e.preventDefault(); });
+    dz.addEventListener('dragleave', () => { dz.classList.remove('dragover'); });
+    dz.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dz.classList.remove('dragover');
+        handleFileSelect(e.dataTransfer.files);
+    });
+</script>
+
+</body>
+</html>
